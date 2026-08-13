@@ -651,7 +651,6 @@ NINJA APEX V3 UPGRADE MANIFEST
     <div id="reco-list" class="flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
   </div>
 <div class="progress-track"><div id="rank-progress-fill" class="progress-fill" style="background:linear-gradient(90deg,var(--amber),var(--jade));width:0%"></div></div>
-  </div>
 
   <div class="px-6 pt-3">
     <div id="smart-insight" class="hidden mb-3 glass-card rounded-xl p-3 border border-[rgba(34,211,238,.3)]">
@@ -4656,3 +4655,142 @@ ensure();
 </script>
 </body>
 </html>
+
+
+<!-- NINJA APEX — FINAL DRAWER FIX: drawers are hidden until explicitly opened -->
+<style id="ninja-final-drawer-fix">
+  /* These panels must never participate in normal page flow. */
+  #cart-drawer,
+  #wishlist-drawer,
+  #orders-drawer {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    z-index: 9999 !important;
+    transition: transform .28s ease, visibility 0s linear 0s !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  #cart-drawer { right: 0 !important; left: auto !important; width: min(100vw, 448px) !important; transform: translateX(100%) !important; }
+  #wishlist-drawer, #orders-drawer { left: 0 !important; right: auto !important; width: min(100vw, 384px) !important; transform: translateX(-100%) !important; }
+  #cart-drawer.ninja-drawer-open,
+  #wishlist-drawer.ninja-drawer-open,
+  #orders-drawer.ninja-drawer-open {
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transform: translateX(0) !important;
+  }
+  #cart-overlay, #wishlist-overlay, #orders-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 9998 !important;
+    display: none !important;
+    pointer-events: none !important;
+  }
+  #cart-overlay.ninja-overlay-open,
+  #wishlist-overlay.ninja-overlay-open,
+  #orders-overlay.ninja-overlay-open {
+    display: block !important;
+    pointer-events: auto !important;
+  }
+
+  /* Only the real cart checkout button exists. Legacy V6 fast-lane buttons are dead. */
+  #v6-cart-quick,
+  #v6-quick-checkout,
+  #v6-rabbit-checkout,
+  #rabbit-purchase-overlay,
+  #rabbit-corner,
+  #raffle-success-overlay { display: none !important; pointer-events: none !important; }
+
+  /* Checkout modal is also closed on first paint. */
+  #checkout-modal { display: none !important; }
+  #checkout-modal.ninja-checkout-open { display: flex !important; }
+
+  @media (max-width: 700px) {
+    #cart-drawer, #wishlist-drawer, #orders-drawer { width: 100vw !important; max-width: none !important; }
+  }
+</style>
+<script id="ninja-final-drawer-fix-js">
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const panels = {
+    cart: { panel:'cart-drawer', overlay:'cart-overlay', closed:'translateX(100%)' },
+    wishlist: { panel:'wishlist-drawer', overlay:'wishlist-overlay', closed:'translateX(-100%)' },
+    orders: { panel:'orders-drawer', overlay:'orders-overlay', closed:'translateX(-100%)' }
+  };
+
+  function setDrawer(key, open){
+    const cfg = panels[key], panel=$(cfg.panel), overlay=$(cfg.overlay);
+    if(!panel || !overlay) return;
+    panel.classList.toggle('ninja-drawer-open', !!open);
+    overlay.classList.toggle('ninja-overlay-open', !!open);
+    panel.classList.toggle('hidden', false);
+    overlay.classList.toggle('hidden', false);
+    panel.style.transform = open ? 'translateX(0)' : cfg.closed;
+    panel.style.visibility = open ? 'visible' : 'hidden';
+    panel.style.pointerEvents = open ? 'auto' : 'none';
+    overlay.style.display = open ? 'block' : 'none';
+    overlay.style.pointerEvents = open ? 'auto' : 'none';
+  }
+
+  function closeAll(except){
+    Object.keys(panels).forEach(k=>{ if(k!==except) setDrawer(k,false); });
+  }
+
+  window.toggleCart = function(force){
+    const p=$('cart-drawer');
+    const open = typeof force === 'boolean' ? force : !p?.classList.contains('ninja-drawer-open');
+    closeAll(open ? 'cart' : null); setDrawer('cart',open);
+  };
+  window.toggleWishlistPanel = function(force){
+    const p=$('wishlist-drawer');
+    const open = typeof force === 'boolean' ? force : !p?.classList.contains('ninja-drawer-open');
+    closeAll(open ? 'wishlist' : null); setDrawer('wishlist',open);
+  };
+  window.toggleOrdersLookup = function(force){
+    const p=$('orders-drawer');
+    const open = typeof force === 'boolean' ? force : !p?.classList.contains('ninja-drawer-open');
+    closeAll(open ? 'orders' : null); setDrawer('orders',open);
+    if(open) setTimeout(()=>$('lookup-phone')?.focus(),150);
+  };
+  window.openOrdersLookup = function(){ window.toggleOrdersLookup(true); };
+
+  /* Checkout is reachable only through the checkout button that lives inside the cart. */
+  const originalOpenCheckout = window.openCheckout;
+  window.openCheckout = function(){
+    const cart=$('cart-drawer');
+    if(!cart || !cart.classList.contains('ninja-drawer-open')) return;
+    if(typeof window.cart!=='undefined' && Array.isArray(window.cart) && window.cart.length===0) return;
+    if(typeof originalOpenCheckout === 'function') originalOpenCheckout.apply(this,arguments);
+    $('checkout-modal')?.classList.add('ninja-checkout-open');
+  };
+  const originalCloseCheckout = window.closeCheckout;
+  window.closeCheckout = function(){
+    $('checkout-modal')?.classList.remove('ninja-checkout-open');
+    if(typeof originalCloseCheckout === 'function') originalCloseCheckout.apply(this,arguments);
+  };
+
+  function hardReset(){
+    closeAll();
+    setDrawer('cart',false); setDrawer('wishlist',false); setDrawer('orders',false);
+    $('checkout-modal')?.classList.remove('ninja-checkout-open');
+    document.querySelectorAll('#v6-cart-quick,#v6-quick-checkout').forEach(x=>x.remove());
+  }
+
+  document.addEventListener('DOMContentLoaded', hardReset, {once:true});
+  if(document.readyState!=='loading') hardReset();
+  document.addEventListener('keydown', e=>{
+    if(e.key!=='Escape') return;
+    closeAll(); setDrawer('cart',false); setDrawer('wishlist',false); setDrawer('orders',false);
+    window.closeCheckout?.();
+  });
+})();
+</script>
